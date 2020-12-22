@@ -37,7 +37,7 @@ class Chip8:
     start = 0x200
     screen_size = np.array([64, 32])
 
-    def __init__(self, path):
+    def __init__(self, path, debug=False):
         pygame.init()
 
         self.RAM = np.zeros(0x1000, dtype=np.uint8)
@@ -57,6 +57,7 @@ class Chip8:
         with open(path, 'rb') as f:
             binary = list(f.read())
             self.RAM[self.start:self.start + len(binary)] = binary
+        self.debug = debug
 
     def run(self):
         self.PC = self.start
@@ -64,12 +65,12 @@ class Chip8:
         timer_clock = cpu_clock = time.time()
         while True:
             instr = self.fetch_instr(self.PC)
-            output = hex(self.PC)[2:].zfill(4) + ' ' + hex(instr)[2:].zfill(4)
             result = self.run_instr(instr)
             if result == None: # invalid instruction
                 print('INVALID INSTRUCTION:', hex(instr))
                 return
-            print(output, result.ljust(13, ' '), self.V)
+            if self.debug:
+                print(hex(self.PC)[2:].zfill(4) + ' ' + hex(instr)[2:].zfill(4), result.ljust(13, ' '), self.V)
             name = result.split()[0]
             if name not in self.pc_modifying:
                 self.PC += 2
@@ -300,5 +301,7 @@ class Chip8:
         block ^= bitarray
         self.draw()
 
-c = Chip8(sys.argv[1])
-c.run()
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        c = Chip8(sys.argv[1])
+        c.run()
