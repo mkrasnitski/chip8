@@ -7,11 +7,7 @@ import time
 import random
 
 class Chip8:
-    instrs = ['LD', 'ADD', 'SUB', 'SUBN', 'OR', 'AND', 'XOR', 'SHR', 'SHL', 'RND', # arithmetic
-              'RET', 'JP', 'CALL', 'SE', 'SNE', # control flow
-              'CLS', 'DRW', # screen
-              'SKP', 'SKNP'] # keyboard
-    pc_modifying = ['JP nnn', 'CALL nnn', 'RET']
+    pc_modifying = ['JP', 'CALL', 'RET']
     digits = np.array([
                 0xF0, 0x90, 0x90, 0x90, 0xF0,
                 0x20, 0x60, 0x20, 0x20, 0x70,
@@ -74,7 +70,8 @@ class Chip8:
                 print('INVALID INSTRUCTION:', hex(instr))
                 return
             print(output, result.ljust(13, ' '), self.V)
-            if result not in self.pc_modifying:
+            name = result.split()[0]
+            if name not in self.pc_modifying:
                 self.PC += 2
 
             key, val = self.poll_keypress()
@@ -299,8 +296,8 @@ class Chip8:
         Vx, Vy = self.V[x], self.V[y]
         block = self.screen[Vx:Vx+8, Vy:Vy+n].T
         bitarray = bitarray[tuple(map(slice, block.shape))]
+        self.V[0xF] = np.any((block == 1) & (block == bitarray))
         block ^= bitarray
-        self.V[0xF] = (np.any(block != bitarray))
         self.draw()
 
 c = Chip8(sys.argv[1])
