@@ -61,7 +61,6 @@ class Chip8:
 
     def run(self):
         self.PC = self.start
-        instr = None
         timer_clock = cpu_clock = time.time()
         while True:
             instr = self.fetch_instr(self.PC)
@@ -292,16 +291,17 @@ class Chip8:
 
     def DRW(self, x, y, n):
         sprite = np.array(self.RAM[self.I:self.I+n])
-        bitarray = np.unpackbits(np.expand_dims(sprite, 1), axis=1)
+        bitarray = np.unpackbits(np.expand_dims(sprite, 1), axis=1).T
 
-        Vx, Vy = self.V[x], self.V[y]
-        block = self.screen[Vx:Vx+8, Vy:Vy+n].T
-        bitarray = bitarray[tuple(map(slice, block.shape))]
-        self.V[0xF] = np.any((block == 1) & (block == bitarray))
-        block ^= bitarray
+        x_idx = np.mod(range(self.V[x], self.V[x] + 8), self.screen.shape[0])
+        y_idx = np.mod(range(self.V[y], self.V[y] + n), self.screen.shape[1])
+        slice_idx = [x_idx[:,np.newaxis], y_idx]
+
+        self.V[0xF] = np.any(self.screen[slice_idx] & bitarray)
+        self.screen[slice_idx] ^= bitarray
         self.draw()
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
-        c = Chip8(sys.argv[1])
+        c = Chip8(sys.argv[1], debug=True)
         c.run()
