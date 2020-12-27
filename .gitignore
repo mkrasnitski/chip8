@@ -1,2 +1,6 @@
 *.txt
 roms/
+debug/
+target/
+Cargo.lock
+**/*.rs.bk

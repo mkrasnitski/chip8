@@ -1,0 +1,12 @@
+[package]
+name = "chip8-rs"
+version = "0.1.0"
+authors = ["Michael Krasnitski <michael.krasnitski@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.0"
+sdl2 = "0.34.3"
+path-dedot = "3.0.7"
