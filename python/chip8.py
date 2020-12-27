@@ -33,7 +33,7 @@ class Chip8:
                    4, 5,  6, 13,
                    7, 8,  9, 14,
                   10, 0, 11, 15]
-    digit_loc = 0x0
+    digits_loc = 0x0
     start = 0x200
     screen_size = np.array([64, 32])
 
@@ -53,7 +53,7 @@ class Chip8:
         self.screen = np.zeros(self.screen_size, dtype=np.uint8)
         self.display = pygame.display.set_mode(self.screen_size * self.scale_factor, flags = pygame.DOUBLEBUF)
 
-        self.RAM[self.digit_loc:self.digit_loc + len(self.digits)] = self.digits
+        self.RAM[self.digits_loc:self.digits_loc + len(self.digits)] = self.digits
         with open(path, 'rb') as f:
             binary = list(f.read())
             self.RAM[self.start:self.start + len(binary)] = binary
@@ -194,7 +194,7 @@ class Chip8:
                         break
             elif mode == 5: self.DT = self.V[x]
             elif mode == 6: self.ST = self.V[x]
-            elif mode == 7: self.I = self.digit_loc + 5 * self.V[x]
+            elif mode == 7: self.I = self.digits_loc + 5 * self.V[x]
             elif mode == 8:
                 BCD = [self.V[x] // 100, (self.V[x] % 100) // 10, self.V[x] % 10]
                 self.RAM[self.I:self.I+3] = BCD
