@@ -65,11 +65,11 @@ class Chip8:
         while True:
             instr = self.fetch_instr(self.PC)
             result = self.run_instr(instr)
+            if self.debug:
+                print(hex(self.PC)[2:].zfill(4) + ' ' + hex(instr)[2:].zfill(4), result.ljust(13, ' '), self.V)
             if result == None: # invalid instruction
                 print('INVALID INSTRUCTION:', hex(instr))
                 return
-            if self.debug:
-                print(hex(self.PC)[2:].zfill(4) + ' ' + hex(instr)[2:].zfill(4), result.ljust(13, ' '), self.V)
             name = result.split()[0]
             if name not in self.pc_modifying:
                 self.PC += 2

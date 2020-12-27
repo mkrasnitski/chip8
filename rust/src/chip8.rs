@@ -87,10 +87,7 @@ impl Chip8 {
 
         loop {
             let start_time = Instant::now();
-            self.poll_keyboard();
-
             let instr = self.fetch_instr(self.PC);
-            self.run_instr(instr);
             let s = self.instr_name(instr);
             if !s.is_empty() {
                 if DEBUG_LEVEL == 0 {
@@ -110,6 +107,8 @@ impl Chip8 {
                 println!("INVALID INSTRUCTION: {:04x}", instr);
                 break;
             }
+            self.poll_keyboard();
+            self.run_instr(instr);
             self.display.draw(&self.screen);
             if self.check_timers(&timer) {
                 if self.DT > 0 {
@@ -148,12 +147,12 @@ impl Chip8 {
                 if key.is_empty() {
                     std::process::exit(0);
                 }
-                if DEBUG_LEVEL <= 2 {
-                    println!("{} {}", key, v);
-                };
                 let k = match KEYS.iter().position(|&s| s == key) {
                     Some(index) => {
                         let key_val = KEY_VALS[index];
+                        if DEBUG_LEVEL <= 2 {
+                            println!("{} {}", key_val, v);
+                        };
                         self.keyboard[key_val as usize] = v;
                         Some(key_val)
                     }
@@ -245,7 +244,7 @@ impl Chip8 {
             [4, x, _, _] => self.SKIP(self.V[x] != kk),
             [5, x, y, 0] => self.SKIP(self.V[x] == self.V[y]),
             [6, x, _, _] => self.V[x] = kk,
-            [7, x, _, _] => self.ADD(x, kk),
+            [7, x, _, _] => self.V[x] = self.V[x].wrapping_add(kk),
             [8, x, y, 0] => self.V[x] = self.V[y],
             [8, x, y, 1] => self.V[x] |= self.V[y],
             [8, x, y, 2] => self.V[x] &= self.V[y],
