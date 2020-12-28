@@ -236,86 +236,88 @@ impl Chip8 {
             [0, 0, 0xE, 0] => self.screen = [[0; CHIP8_WIDTH]; CHIP8_HEIGHT],
             [0, 0, 0xE, 0xE] => self.PC = self.pop(),
             [1, _, _, _] => self.PC = nnn,
-            [2, _, _, _] => {
-                self.push(self.PC + 2);
-                self.PC = nnn;
-            }
+            [2, _, _, _] => self.CALL(nnn),
             [3, x, _, _] => self.SKIP(self.V[x] == kk),
             [4, x, _, _] => self.SKIP(self.V[x] != kk),
             [5, x, y, 0] => self.SKIP(self.V[x] == self.V[y]),
             [6, x, _, _] => self.V[x] = kk,
-            [7, x, _, _] => self.V[x] = self.V[x].wrapping_add(kk),
+            [7, x, _, _] => self.ADD(x, kk, false),
             [8, x, y, 0] => self.V[x] = self.V[y],
             [8, x, y, 1] => self.V[x] |= self.V[y],
             [8, x, y, 2] => self.V[x] &= self.V[y],
             [8, x, y, 3] => self.V[x] ^= self.V[y],
-            [8, x, y, 4] => self.ADD(x, self.V[y]),
+            [8, x, y, 4] => self.ADD(x, self.V[y], true),
             [8, x, y, 5] => self.SUB(x, self.V[y]),
-            [8, x, y, 6] => {
-                self.V[0xF] = self.V[x] & 0x1;
-                self.V[x] >>= 1;
-            }
+            [8, x, y, 6] => self.SH(x, 'R'),
             [8, x, y, 7] => self.SUB(y, self.V[x]),
-            [8, x, y, 0xE] => {
-                self.V[0xF] = (self.V[x] & (1 << 7) != 0) as u8;
-                self.V[x] <<= 1;
-            }
+            [8, x, y, 0xE] => self.SH(x, 'L'),
             [9, x, y, 0] => self.SKIP(self.V[x] != self.V[y]),
             [0xA, _, _, _] => self.I = nnn,
             [0xB, _, _, _] => self.PC = nnn + self.V[0] as u16,
             [0xC, x, _, _] => self.V[x] = self.rng.gen::<u8>() & kk,
             [0xD, x, y, n] => self.DRW(x, y, n),
-            [0xE, x, 9, 0xE] => {
-                if self.keyboard[self.V[x] as usize] {
-                    self.PC += 2
-                }
-            }
-            [0xE, x, 0xA, 1] => {
-                if !self.keyboard[self.V[x] as usize] {
-                    self.PC += 2
-                }
-            }
+            [0xE, x, 9, 0xE] => self.SKIP(self.keyboard[self.V[x] as usize]),
+            [0xE, x, 0xA, 1] => self.SKIP(!self.keyboard[self.V[x] as usize]),
             [0xF, x, 0, 7] => self.V[x] = self.DT,
-            [0xF, x, 0, 0xA] => loop {
+            [0xF, x, 0, 0xA] => self.LD(x, "K"),
+            [0xF, x, 1, 5] => self.DT = self.V[x],
+            [0xF, x, 1, 8] => self.ST = self.V[x],
+            [0xF, x, 1, 0xE] => self.I = self.I.wrapping_add(self.V[x] as u16),
+            [0xF, x, 2, 9] => self.LD(x, "F"),
+            [0xF, x, 3, 3] => self.LD(x, "B"),
+            [0xF, x, 5, 5] => self.LD(x, "->[I]"),
+            [0xF, x, 6, 5] => self.LD(x, "<-[I]"),
+            _ => (),
+        };
+    }
+
+    fn LD(&mut self, x: usize, mode: &str) {
+        let I = self.I as usize;
+        match mode {
+            "K" => loop {
                 if let (Some(key_val), true) = self.poll_keyboard() {
                     self.V[x] = key_val as u8;
                     break;
                 }
             },
-            [0xF, x, 1, 5] => self.DT = self.V[x],
-            [0xF, x, 1, 8] => self.ST = self.V[x],
-            [0xF, x, 1, 0xE] => self.I += self.V[x] as u16,
-            [0xF, x, 2, 9] => self.I = DIGITS_LOC + 5 * self.V[x] as u16,
-            [0xF, x, 3, 3] => {
-                let I = self.I as usize;
-                self.RAM[I..I + 3].copy_from_slice(&[
-                    self.V[x] / 100,
-                    (self.V[x] % 100) / 10,
-                    self.V[x] % 10,
-                ]);
+            "F" => self.I = DIGITS_LOC + 5 * self.V[x] as u16,
+            "B" => {
+                let B = [self.V[x] / 100, (self.V[x] % 100) / 10, self.V[x] % 10];
+                self.RAM[I..I + 3].copy_from_slice(&B);
             }
-            [0xF, x, 5, 5] => {
-                let I = self.I as usize;
-                self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]);
-            }
-            [0xF, x, 6, 5] => {
-                let I = self.I as usize;
-                self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]);
-            }
-            _ => (),
-        };
+            "->[I]" => self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]),
+            "<-[I]" => self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]),
+            _ => panic!("Incorrect LD mode."),
+        }
     }
 
-    fn ADD(&mut self, dest_reg: usize, src_val: u8) {
+    fn ADD(&mut self, dest_reg: usize, src_val: u8, overflow_check: bool) {
         let (res, overflow) = self.V[dest_reg].overflowing_add(src_val);
         self.V[dest_reg] = res;
-        self.V[0xF] = overflow as u8;
+        if overflow_check {
+            self.V[0xF] = overflow as u8;
+        }
     }
 
     fn SUB(&mut self, dest_reg: usize, src_val: u8) {
         let (res, borrow) = self.V[dest_reg].overflowing_sub(src_val);
         self.V[dest_reg] = res;
         self.V[0xF] = !borrow as u8;
+    }
+
+    fn SH(&mut self, reg: usize, direction: char) {
+        let (res, mask) = match direction {
+            'R' => (self.V[reg] >> 1, 1),
+            'L' => (self.V[reg] << 1, 1 << 7),
+            _ => panic!("Incorrect SH direction."),
+        };
+        self.V[0xF] = (self.V[reg] & mask != 0) as u8;
+        self.V[reg] = res;
+    }
+
+    fn CALL(&mut self, nnn: u16) {
+        self.push(self.PC + 2);
+        self.PC = nnn;
     }
 
     fn SKIP(&mut self, expr: bool) {
