@@ -24,7 +24,7 @@ const KEY_VALS: [u8; 16] = [1, 2, 3, 12, 4, 5, 6, 13, 7, 8, 9, 14, 10, 0, 11, 15
 const DIGITS_LOC: u16 = 0;
 const CLOCK_HZ: u64 = 1000;
 const LIMIT_FREQ: bool = true;
-const DEBUG_LEVEL: u8 = 0xFF;
+const DEBUG: bool = false;
 
 pub struct Chip8 {
     start: u16,
@@ -89,23 +89,18 @@ impl Chip8 {
             let start_time = Instant::now();
             let instr = self.fetch_instr(self.PC);
             let s = self.instr_name(instr);
-            if !s.is_empty() {
-                if DEBUG_LEVEL == 0 {
-                    println!(
-                        "{:04x} {:04x} {: <13} {}",
-                        self.PC,
-                        instr,
-                        s,
-                        self.get_state()
-                    );
-                }
-                let name: &str = s.split(" ").collect::<Vec<&str>>()[0];
-                if !pc_modifying.contains(&name) {
-                    self.PC += 2
-                }
-            } else {
-                println!("INVALID INSTRUCTION: {:04x}", instr);
-                break;
+            if DEBUG {
+                println!(
+                    "{:04x} {:04x} {: <13} {}",
+                    self.PC,
+                    instr,
+                    s,
+                    self.get_state()
+                );
+            }
+            let name: &str = s.split(" ").collect::<Vec<&str>>()[0];
+            if !pc_modifying.contains(&name) {
+                self.PC += 2
             }
             self.poll_keyboard();
             self.run_instr(instr);
@@ -123,7 +118,7 @@ impl Chip8 {
                 let elapsed = start_time.elapsed();
                 if elapsed < total {
                     std::thread::sleep(total - elapsed);
-                } else if DEBUG_LEVEL <= 1 {
+                } else if DEBUG {
                     println!("Frame time: {:?} > {:?}", elapsed, total);
                 }
             }
@@ -150,9 +145,6 @@ impl Chip8 {
                 let k = match KEYS.iter().position(|&s| s == key) {
                     Some(index) => {
                         let key_val = KEY_VALS[index];
-                        if DEBUG_LEVEL <= 2 {
-                            println!("{} {}", key_val, v);
-                        };
                         self.keyboard[key_val as usize] = v;
                         Some(key_val)
                     }
@@ -219,7 +211,7 @@ impl Chip8 {
             [0xF, x, 3, 3] => "LD B, Vx",
             [0xF, x, 5, 5] => "LD [I], Vx",
             [0xF, x, 6, 5] => "LD Vx, [I]",
-            _ => "",
+            _ => panic!("INVALID INSTRUCTION: {:04x}", instr),
         };
     }
 
