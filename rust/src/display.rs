@@ -16,7 +16,8 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn new(context: sdl2::Sdl) -> Self {
+    pub fn new() -> Self {
+        let context = sdl2::init().unwrap();
         let video_subsystem = context.video().unwrap();
 
         let window = video_subsystem
@@ -31,6 +32,10 @@ impl Display {
         };
     }
 
+    // Draw pixels to the screen based on the contents of the passed-in array.
+    // We iterate through the array and if a pixel is set, we draw it to the
+    // screen in the correct place and with the correct size. Unset pixels are
+    // not drawn, because the background is already black.
     pub fn draw(&mut self, x: &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT]) {
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
@@ -53,6 +58,11 @@ impl Display {
         self.canvas.present();
     }
 
+    // Poll for events a single time. If there is an event on the queue:
+    //      1. If it's a quit event, kill the process immediately.
+    //      2. If it's a keydown/up event, return the name of the
+    //         key as well as the "pressed" state as a bool.
+    //      3. If it's anything else, do nothing.
     pub fn poll_events(&mut self) -> Option<(String, bool)> {
         for event in self.event_pump.poll_iter() {
             match event {
@@ -60,7 +70,7 @@ impl Display {
                 | Event::KeyDown {
                     keycode: Some(Keycode::Escape),
                     ..
-                } => return Some((String::new(), true)),
+                } => std::process::exit(0),
                 Event::KeyDown {
                     keycode: Some(x),
                     repeat: false,

@@ -67,7 +67,7 @@ impl Chip8 {
 
             keyboard: [false; 16],
             screen: [[0; CHIP8_WIDTH]; CHIP8_HEIGHT],
-            display: Display::new(sdl2::init().unwrap()),
+            display: Display::new(),
         };
         let s = c.start as usize;
         let digits_offset = DIGITS_LOC as usize;
@@ -80,13 +80,18 @@ impl Chip8 {
         self.PC = self.start;
         let pc_modifying = ["JP", "CALL", "RET"];
         let mut timer = Instant::now();
-        let sleep_amount = match LIMIT_FREQ {
+        let frametime = match LIMIT_FREQ {
             true => Some(Duration::from_nanos(1000000000 / CLOCK_HZ)),
             false => None,
         };
 
         loop {
             let start_time = Instant::now();
+
+            // Fetch the next two bytes from RAM, and queue up what
+            // instruction to run next. Based on the name of the instruction,
+            // if the instr modifies the PC directly, don't auto-increment it.
+            // Then, run the instruction and invoke a draw call.
             let instr = self.fetch_instr(self.PC);
             let s = self.instr_name(instr);
             if DEBUG {
@@ -105,7 +110,10 @@ impl Chip8 {
             self.poll_keyboard();
             self.run_instr(instr);
             self.display.draw(&self.screen);
-            if self.check_timers(&timer) {
+
+            // If enough time has passed, invoke a decrement of DT and ST.
+            // These should decrement at 60Hz if they have values > 0.
+            if timer.elapsed() > Duration::from_millis(1000 / 60) {
                 if self.DT > 0 {
                     self.DT -= 1;
                 }
@@ -114,7 +122,10 @@ impl Chip8 {
                 }
                 timer = Instant::now();
             }
-            if let Some(total) = sleep_amount {
+
+            // If LIMIT_FREQ was set, this will be Some(). This will then sleep
+            // so that the total time for the loop is equal to `frametime`.
+            if let Some(total) = frametime {
                 let elapsed = start_time.elapsed();
                 if elapsed < total {
                     std::thread::sleep(total - elapsed);
@@ -136,28 +147,21 @@ impl Chip8 {
         return res;
     }
 
-    fn poll_keyboard(&mut self) -> (Option<u8>, bool) {
+    // Poll the display's event pump, and if we find a keyboard event,
+    // and the key maps to a valid emulated keyboard key, return the
+    // keyboard value corresponding to it, otherwise return None
+    fn poll_keyboard(&mut self) -> Option<(u8, bool)> {
         match self.display.poll_events() {
-            Some((key, v)) => {
-                if key.is_empty() {
-                    std::process::exit(0);
+            Some((key, v)) => match KEYS.iter().position(|&s| s == key) {
+                Some(index) => {
+                    let key_val = KEY_VALS[index];
+                    self.keyboard[key_val as usize] = v;
+                    Some((key_val, v))
                 }
-                let k = match KEYS.iter().position(|&s| s == key) {
-                    Some(index) => {
-                        let key_val = KEY_VALS[index];
-                        self.keyboard[key_val as usize] = v;
-                        Some(key_val)
-                    }
-                    None => None,
-                };
-                return (k, v);
-            }
-            _ => (None, false),
+                None => None,
+            },
+            None => None,
         }
-    }
-
-    fn check_timers(&mut self, time: &Instant) -> bool {
-        time.elapsed() > Duration::from_millis(1000 / 60)
     }
 
     fn get_state(&self) -> String {
@@ -267,7 +271,7 @@ impl Chip8 {
         let I = self.I as usize;
         match mode {
             "K" => loop {
-                if let (Some(key_val), true) = self.poll_keyboard() {
+                if let Some((key_val, true)) = self.poll_keyboard() {
                     self.V[x] = key_val as u8;
                     break;
                 }
@@ -283,6 +287,7 @@ impl Chip8 {
         }
     }
 
+    // Add src_val to V[dest_reg], and set VF if an overflow occurs
     fn ADD(&mut self, dest_reg: usize, src_val: u8, overflow_check: bool) {
         let (res, overflow) = self.V[dest_reg].overflowing_add(src_val);
         self.V[dest_reg] = res;
@@ -291,12 +296,15 @@ impl Chip8 {
         }
     }
 
+    // Subtract src_val from V[dest_reg], and set VF if NO BORROW occurs
     fn SUB(&mut self, dest_reg: usize, src_val: u8) {
         let (res, borrow) = self.V[dest_reg].overflowing_sub(src_val);
         self.V[dest_reg] = res;
         self.V[0xF] = !borrow as u8;
     }
 
+    // Shift the register left or right, and set VF if any set bits get
+    // shifted out of range.
     fn SH(&mut self, reg: usize, direction: char) {
         let (res, mask) = match direction {
             'R' => (self.V[reg] >> 1, 1),
@@ -318,6 +326,10 @@ impl Chip8 {
         }
     }
 
+    // Draw an 8xN Sprite at the location (Vx, Vy) on the screen by XORing
+    // the screen with the sprite. Set VF if any set pixels on the screen
+    // are erased during this process. Any pixels that would be drawn out
+    // of bounds are wrapped around to the other side of the screen.
     fn DRW(&mut self, x: usize, y: usize, n: usize) {
         self.V[0xF] = 0;
         for j in 0..n {
