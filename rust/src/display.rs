@@ -26,10 +26,10 @@ impl Display {
             .build()
             .unwrap();
 
-        return Display {
+        Display {
             event_pump: context.event_pump().unwrap(),
             canvas: window.into_canvas().build().unwrap(),
-        };
+        }
     }
 
     // Draw pixels to the screen based on the contents of the passed-in array.
@@ -82,6 +82,6 @@ impl Display {
                 _ => {}
             }
         }
-        return None;
+        None
     }
 }

@@ -45,7 +45,7 @@ pub struct Chip8 {
 }
 
 impl Chip8 {
-    pub fn new(loc: &String) -> Result<Self, String> {
+    pub fn new(loc: &str) -> Result<Self, String> {
         let path = Path::new(loc).parse_dot().unwrap();
         let binary = match fs::read(&path) {
             Ok(bytes) => bytes,
@@ -73,7 +73,7 @@ impl Chip8 {
         let digits_offset = DIGITS_LOC as usize;
         c.RAM[digits_offset..digits_offset + 80].clone_from_slice(&DIGITS);
         c.RAM[s..s + binary.len()].clone_from_slice(&binary);
-        return Ok(c);
+        Ok(c)
     }
 
     pub fn run(&mut self) {
@@ -103,7 +103,7 @@ impl Chip8 {
                     self.get_state()
                 );
             }
-            let name: &str = s.split(" ").collect::<Vec<&str>>()[0];
+            let name: &str = s.split(' ').collect::<Vec<&str>>()[0];
             if !pc_modifying.contains(&name) {
                 self.PC += 2
             }
@@ -144,7 +144,7 @@ impl Chip8 {
     fn pop(&mut self) -> u16 {
         let res = self.stack[self.SP as usize];
         self.SP -= 1;
-        return res;
+        res
     }
 
     // Poll the display's event pump, and if we find a keyboard event,
@@ -165,12 +165,12 @@ impl Chip8 {
     }
 
     fn get_state(&self) -> String {
-        return format!("{:x} {: >2} {} {:?}", self.I, self.DT, self.ST, self.V);
+        format!("{:x} {: >2} {} {:?}", self.I, self.DT, self.ST, self.V)
     }
 
     fn fetch_instr(&self, addr: u16) -> u16 {
         let addr = addr as usize;
-        return ((self.RAM[addr] as u16) << 8) + (self.RAM[addr + 1] as u16);
+        ((self.RAM[addr] as u16) << 8) + (self.RAM[addr + 1] as u16)
     }
 
     fn instr_name(&self, instr: u16) -> &str {
@@ -180,7 +180,7 @@ impl Chip8 {
             ((instr >> 4) & 0xF).into(),
             (instr & 0xF).into(),
         ];
-        return match nibbles {
+        match nibbles {
             [0, 0, 0xE, 0] => "CLS",
             [0, 0, 0xE, 0xE] => "RET",
             [1, _, _, _] => "JP nnn",
@@ -216,7 +216,7 @@ impl Chip8 {
             [0xF, x, 5, 5] => "LD [I], Vx",
             [0xF, x, 6, 5] => "LD Vx, [I]",
             _ => panic!("INVALID INSTRUCTION: {:04x}", instr),
-        };
+        }
     }
 
     fn run_instr(&mut self, instr: u16) {
