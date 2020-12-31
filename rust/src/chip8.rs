@@ -1,6 +1,5 @@
 #![allow(non_snake_case, unused_variables, dead_code)]
 
-use path_dedot::*;
 use rand::Rng;
 use std::fs;
 use std::path::Path;
@@ -46,7 +45,7 @@ pub struct Chip8 {
 
 impl Chip8 {
     pub fn new(loc: &str) -> Result<Self, String> {
-        let path = Path::new(loc).parse_dot().unwrap();
+        let path = Path::new(loc);
         let binary = match fs::read(&path) {
             Ok(bytes) => bytes,
             Err(_) => return Err(format!("Unable to read file {}", path.to_str().unwrap())),

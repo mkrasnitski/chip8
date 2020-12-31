@@ -1,5 +1,3 @@
-extern crate sdl2;
-
 mod chip8;
 mod display;
 

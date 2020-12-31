@@ -9,4 +9,3 @@ edition = "2018"
 [dependencies]
 rand = "0.8.0"
 sdl2 = "0.34.3"
-path-dedot = "3.0.7"
