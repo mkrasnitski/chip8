@@ -36,13 +36,13 @@ impl Display {
     // We iterate through the array and if a pixel is set, we draw it to the
     // screen in the correct place and with the correct size. Unset pixels are
     // not drawn, because the background is already black.
-    pub fn draw(&mut self, x: &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT]) {
+    pub fn draw(&mut self, x: &[[bool; CHIP8_WIDTH]; CHIP8_HEIGHT]) {
         self.canvas.set_draw_color(Color::BLACK);
         self.canvas.clear();
         for i in 0..64 {
             for j in 0..32 {
                 match x[j][i] {
-                    1 => {
+                    true => {
                         self.canvas.set_draw_color(Color::WHITE);
                         let _ = self.canvas.fill_rect(Rect::new(
                             (i * SCALE_FACTOR) as i32,
@@ -51,7 +51,7 @@ impl Display {
                             SCALE_FACTOR as u32,
                         ));
                     }
-                    _ => continue,
+                    false => continue,
                 }
             }
         }

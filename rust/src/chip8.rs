@@ -39,7 +39,7 @@ pub struct Chip8 {
     ST: u8,
 
     keyboard: [bool; 16],
-    screen: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
+    screen: [[bool; CHIP8_WIDTH]; CHIP8_HEIGHT],
     display: Display,
 }
 
@@ -65,7 +65,7 @@ impl Chip8 {
             ST: 0,
 
             keyboard: [false; 16],
-            screen: [[0; CHIP8_WIDTH]; CHIP8_HEIGHT],
+            screen: [[false; CHIP8_WIDTH]; CHIP8_HEIGHT],
             display: Display::new(),
         };
         let s = c.start as usize;
@@ -228,7 +228,7 @@ impl Chip8 {
         let kk: u8 = instr as u8;
         let nnn: u16 = instr & 0x0FFF;
         match nibbles {
-            [0, 0, 0xE, 0] => self.screen = [[0; CHIP8_WIDTH]; CHIP8_HEIGHT],
+            [0, 0, 0xE, 0] => self.screen = [[false; CHIP8_WIDTH]; CHIP8_HEIGHT],
             [0, 0, 0xE, 0xE] => self.PC = self.pop(),
             [1, _, _, _] => self.PC = nnn,
             [2, _, _, _] => self.CALL(nnn),
@@ -336,8 +336,8 @@ impl Chip8 {
             let val = self.RAM[self.I as usize + j];
             for i in 0..8 {
                 let x = (self.V[x] as usize + i) % CHIP8_WIDTH;
-                let bit = (val >> (7 - i)) & 1;
-                self.V[0xF] |= bit & self.screen[y][x];
+                let bit = ((val >> (7 - i)) & 1) != 0;
+                self.V[0xF] |= (bit & self.screen[y][x]) as u8;
                 self.screen[y][x] ^= bit;
             }
         }
