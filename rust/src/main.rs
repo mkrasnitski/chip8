@@ -1,6 +1,6 @@
 mod chip8;
-mod defs;
 mod display;
+mod enums;
 
 use chip8::Chip8;
 use std::env;

@@ -1,13 +1,13 @@
-#![allow(non_snake_case, unused_variables, dead_code)]
+#![allow(non_snake_case)]
 
 use rand::Rng;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::defs::{ADDMode, JPMode, LDMode, SEMode};
-use crate::defs::{Instr, Instr::*};
 use crate::display::Display;
+use crate::enums::Instr::*;
+use crate::enums::*;
 
 pub const CHIP8_WIDTH: usize = 64;
 pub const CHIP8_HEIGHT: usize = 32;
@@ -79,7 +79,6 @@ impl Chip8 {
 
     pub fn run(&mut self) {
         self.PC = self.start;
-        let pc_modifying = ["JP", "CALL", "RET"];
         let mut timer = Instant::now();
         let frametime = match LIMIT_FREQ {
             true => Some(Duration::from_nanos(1000000000 / CLOCK_HZ)),
@@ -94,18 +93,24 @@ impl Chip8 {
             // if the instr modifies the PC directly, don't auto-increment it.
             // Then, run the instruction and invoke a draw call.
             let opcode = self.fetch_instr(self.PC);
-            let instr = self.parse_instr(opcode);
+            let instr = match self.parse_instr(opcode) {
+                Ok(instr) => instr,
+                Err(e) => {
+                    println!("{}", e);
+                    break;
+                }
+            };
             if DEBUG {
                 println!(
                     "{:04x} {:04x} {: <13} {}",
                     self.PC,
                     opcode,
-                    self.instr_name(&instr),
+                    instr_name(&instr),
                     self.get_state()
                 );
             }
             match instr {
-                JP(_) | CALL(_) | RET => (),
+                JP(_, _) | CALL(_) | RET => (),
                 _ => self.PC += 2,
             };
             self.poll_keyboard();
@@ -174,7 +179,7 @@ impl Chip8 {
         ((self.RAM[addr] as u16) << 8) + (self.RAM[addr + 1] as u16)
     }
 
-    fn parse_instr(&self, instr: u16) -> Instr {
+    fn parse_instr(&self, instr: u16) -> Result<Instr, String> {
         let nibbles: [usize; 4] = [
             (instr >> 12).into(),
             ((instr >> 8) & 0xF).into(),
@@ -183,28 +188,28 @@ impl Chip8 {
         ];
         let kk: u8 = instr as u8;
         let nnn: u16 = instr & 0x0FFF;
-        match nibbles {
+        let parsed_instr = match nibbles {
             [0, 0, 0xE, 0] => CLS,
             [0, 0, 0xE, 0xE] => RET,
-            [1, _, _, _] => JP(JPMode::NoOffset(nnn)),
+            [1, _, _, _] => JP(nnn, JPMode::NoOffset),
             [2, _, _, _] => CALL(nnn),
             [3, x, _, _] => SE(SEMode::Imm8(x, kk)),
             [4, x, _, _] => SNE(SEMode::Imm8(x, kk)),
             [5, x, y, 0] => SE(SEMode::Reg(x, y)),
             [6, x, _, _] => LD(LDMode::Imm8(x, kk)),
-            [7, x, _, _] => ADD(ADDMode::Imm8(x, kk)),
+            [7, x, _, _] => ADD(x, ADDMode::Imm8(kk)),
             [8, x, y, 0] => LD(LDMode::Reg(x, y)),
             [8, x, y, 1] => OR(x, y),
             [8, x, y, 2] => AND(x, y),
             [8, x, y, 3] => XOR(x, y),
-            [8, x, y, 4] => ADD(ADDMode::Reg(x, y)),
+            [8, x, y, 4] => ADD(x, ADDMode::Reg(y)),
             [8, x, y, 5] => SUB(x, y),
-            [8, x, y, 6] => SHR(x),
+            [8, x, _, 6] => SHR(x),
             [8, x, y, 7] => SUBN(x, y),
-            [8, x, y, 0xE] => SHL(x),
+            [8, x, _, 0xE] => SHL(x),
             [9, x, y, 0] => SNE(SEMode::Reg(x, y)),
             [0xA, _, _, _] => LD(LDMode::Imm12(nnn)),
-            [0xB, _, _, _] => JP(JPMode::Offset(nnn)),
+            [0xB, _, _, _] => JP(nnn, JPMode::Offset),
             [0xC, x, _, _] => RND(x, kk),
             [0xD, x, y, n] => DRW(x, y, n),
             [0xE, x, 9, 0xE] => SKP(x),
@@ -213,69 +218,20 @@ impl Chip8 {
             [0xF, x, 0, 0xA] => LD(LDMode::K(x)),
             [0xF, x, 1, 5] => LD(LDMode::DT(x)),
             [0xF, x, 1, 8] => LD(LDMode::ST(x)),
-            [0xF, x, 1, 0xE] => ADD(ADDMode::ToI(x)),
+            [0xF, x, 1, 0xE] => ADD(x, ADDMode::ToI),
             [0xF, x, 2, 9] => LD(LDMode::F(x)),
             [0xF, x, 3, 3] => LD(LDMode::B(x)),
             [0xF, x, 5, 5] => LD(LDMode::ToI(x)),
             [0xF, x, 6, 5] => LD(LDMode::FromI(x)),
-            _ => panic!("INVALID INSTRUCTION: {:04x}", instr),
-        }
-    }
-
-    fn instr_name(&self, instr: &Instr) -> &str {
-        match instr {
-            LD(mode) => match mode {
-                LDMode::Imm8(x, kk) => "LD Vx, kk",
-                LDMode::Imm12(nnn) => "LD I, nnn",
-                LDMode::Reg(x, y) => "LD Vx, Vy",
-                LDMode::FromDT(x) => "LD Vx, DT",
-                LDMode::DT(x) => "LD DT, Vx",
-                LDMode::ST(x) => "LD ST, Vx",
-                LDMode::K(x) => "LD Vx, K",
-                LDMode::F(x) => "LD Vx, F",
-                LDMode::B(x) => "LD Vx, B",
-                LDMode::ToI(x) => "LD [I], Vx",
-                LDMode::FromI(x) => "LD Vx, [I]",
-            },
-            ADD(mode) => match mode {
-                ADDMode::Imm8(x, kk) => "ADD Vx, kk",
-                ADDMode::Reg(x, y) => "ADD Vx, Vy",
-                ADDMode::ToI(x) => "ADD I, Vx",
-            },
-            SUB(x, y) => "SUB Vx, Vy",
-            SUBN(x, y) => "SUB Vy, Vx",
-            OR(x, y) => "OR Vx, Vy",
-            AND(x, y) => "AND Vx, Vy",
-            XOR(x, y) => "XOR Vx, Vy",
-            SHR(x) => "SHR Vx {, Vy}",
-            SHL(x) => "SHL Vx {, Vy}",
-            RND(x, kk) => "RND Vx, kk",
-
-            SKP(x) => "SKP Vx",
-            SKNP(x) => "SKNP Vx",
-            SE(mode) => match mode {
-                SEMode::Imm8(x, kk) => "SE Vx, kk",
-                SEMode::Reg(x, y) => "SE Vx, Vy",
-            },
-            SNE(mode) => match mode {
-                SEMode::Imm8(x, kk) => "SNE Vx, kk",
-                SEMode::Reg(x, y) => "SNE Vx, Vy",
-            },
-            JP(mode) => match mode {
-                JPMode::NoOffset(nnn) => "JP nnn",
-                JPMode::Offset(nnn) => "JP V0, nnn",
-            },
-            CALL(nnn) => "CALL nnn",
-            RET => "RET",
-
-            CLS => "CLS",
-            DRW(x, y, n) => "DRW Vx, Vy, n",
-        }
+            _ => return Err(format!("INVALID INSTRUCTION: {:04x}", instr)),
+        };
+        Ok(parsed_instr)
     }
 
     fn run_instr(&mut self, instr: Instr) {
         let I = self.I as usize;
         match instr {
+            // Arithmetic
             LD(mode) => match mode {
                 LDMode::Imm8(x, kk) => self.V[x] = kk,
                 LDMode::Imm12(nnn) => self.I = nnn,
@@ -297,10 +253,10 @@ impl Chip8 {
                 LDMode::ToI(x) => self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]),
                 LDMode::FromI(x) => self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]),
             },
-            ADD(mode) => match mode {
-                ADDMode::Imm8(x, kk) => self.V[x] = self.V[x].wrapping_add(kk),
-                ADDMode::ToI(x) => self.I = self.I.wrapping_add(self.V[x] as u16),
-                ADDMode::Reg(x, y) => {
+            ADD(x, mode) => match mode {
+                ADDMode::Imm8(kk) => self.V[x] = self.V[x].wrapping_add(kk),
+                ADDMode::ToI => self.I = self.I.wrapping_add(self.V[x] as u16),
+                ADDMode::Reg(y) => {
                     let (res, overflow) = self.V[x].overflowing_add(self.V[y]);
                     self.V[x] = res;
                     self.V[0xF] = overflow as u8;
@@ -321,28 +277,24 @@ impl Chip8 {
             }
             RND(x, kk) => self.V[x] = self.rng.gen::<u8>() & kk,
 
-            SKP(x) => self.skip(self.keyboard[self.V[x] as usize]),
-            SKNP(x) => self.skip(!self.keyboard[self.V[x] as usize]),
-            SE(mode) => match mode {
-                SEMode::Imm8(x, kk) => self.skip(self.V[x] == kk),
-                SEMode::Reg(x, y) => self.skip(self.V[x] == self.V[y]),
-            },
-            SNE(mode) => match mode {
-                SEMode::Imm8(x, kk) => self.skip(self.V[x] != kk),
-                SEMode::Reg(x, y) => self.skip(self.V[x] != self.V[y]),
-            },
-            JP(mode) => match mode {
-                JPMode::NoOffset(nnn) => self.PC = nnn,
-                JPMode::Offset(nnn) => self.PC = nnn + self.V[0] as u16,
-            },
+            // Control Flow
+            RET => self.PC = self.pop(),
+            JP(nnn, JPMode::NoOffset) => self.PC = nnn,
+            JP(nnn, JPMode::Offset) => self.PC = nnn + self.V[0] as u16,
             CALL(nnn) => {
                 self.push(self.PC + 2);
                 self.PC = nnn;
             }
-            RET => self.PC = self.pop(),
+            SKP(x) => self.skip(self.keyboard[self.V[x] as usize]),
+            SKNP(x) => self.skip(!self.keyboard[self.V[x] as usize]),
+            SE(SEMode::Imm8(x, kk)) => self.skip(self.V[x] == kk),
+            SE(SEMode::Reg(x, y)) => self.skip(self.V[x] == self.V[y]),
+            SNE(SEMode::Imm8(x, kk)) => self.skip(self.V[x] != kk),
+            SNE(SEMode::Reg(x, y)) => self.skip(self.V[x] != self.V[y]),
 
-            CLS => self.screen = [[false; CHIP8_WIDTH]; CHIP8_HEIGHT],
+            // Drawing
             DRW(x, y, n) => self.draw(x, y, n),
+            CLS => self.screen = [[false; CHIP8_WIDTH]; CHIP8_HEIGHT],
         }
     }
 
