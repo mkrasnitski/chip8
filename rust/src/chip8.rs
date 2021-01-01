@@ -102,7 +102,7 @@ impl Chip8 {
             };
             if DEBUG {
                 println!(
-                    "{:04x} {:04x} {: <13} {}",
+                    "{:04x} {:04x} {: <13} | {}",
                     self.PC,
                     opcode,
                     instr_name(&instr),

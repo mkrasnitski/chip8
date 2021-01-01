@@ -75,9 +75,9 @@ pub fn instr_name(instr: &Instr) -> &str {
         XOR(x, y) => "XOR Vx, Vy",                 // 8xy3
         ADD(x, ADDMode::Reg(y)) => "ADD Vx, Vy",   // 8xy4
         SUB(x, y) => "SUB Vx, Vy",                 // 8xy5
-        SHR(x) => "SHR Vx {, Vy}",                 // 8xy6
+        SHR(x) => "SHR Vx",                        // 8xy6
         SUBN(x, y) => "SUB Vy, Vx",                // 8xy7
-        SHL(x) => "SHL Vx {, Vy}",                 // 8xyE
+        SHL(x) => "SHL Vx",                        // 8xyE
         SNE(SEMode::Reg(x, y)) => "SNE Vx, Vy",    // 9xy0
         LD(LDMode::Imm12(nnn)) => "LD I, nnn",     // Annn
         JP(nnn, JPMode::Offset) => "JP V0, nnn",   // Bnnn
