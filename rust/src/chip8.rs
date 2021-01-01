@@ -5,6 +5,8 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use crate::defs::{ADDMode, JPMode, LDMode, SEMode};
+use crate::defs::{Instr, Instr::*};
 use crate::display::Display;
 
 pub const CHIP8_WIDTH: usize = 64;
@@ -91,21 +93,21 @@ impl Chip8 {
             // instruction to run next. Based on the name of the instruction,
             // if the instr modifies the PC directly, don't auto-increment it.
             // Then, run the instruction and invoke a draw call.
-            let instr = self.fetch_instr(self.PC);
-            let s = self.instr_name(instr);
+            let opcode = self.fetch_instr(self.PC);
+            let instr = self.parse_instr(opcode);
             if DEBUG {
                 println!(
                     "{:04x} {:04x} {: <13} {}",
                     self.PC,
-                    instr,
-                    s,
+                    opcode,
+                    self.instr_name(&instr),
                     self.get_state()
                 );
             }
-            let name: &str = s.split(' ').collect::<Vec<&str>>()[0];
-            if !pc_modifying.contains(&name) {
-                self.PC += 2
-            }
+            match instr {
+                JP(_) | CALL(_) | RET => (),
+                _ => self.PC += 2,
+            };
             self.poll_keyboard();
             self.run_instr(instr);
             self.display.draw(&self.screen);
@@ -172,154 +174,186 @@ impl Chip8 {
         ((self.RAM[addr] as u16) << 8) + (self.RAM[addr + 1] as u16)
     }
 
-    fn instr_name(&self, instr: u16) -> &str {
+    fn parse_instr(&self, instr: u16) -> Instr {
         let nibbles: [usize; 4] = [
             (instr >> 12).into(),
             ((instr >> 8) & 0xF).into(),
             ((instr >> 4) & 0xF).into(),
             (instr & 0xF).into(),
         ];
+        let kk: u8 = instr as u8;
+        let nnn: u16 = instr & 0x0FFF;
         match nibbles {
-            [0, 0, 0xE, 0] => "CLS",
-            [0, 0, 0xE, 0xE] => "RET",
-            [1, _, _, _] => "JP nnn",
-            [2, _, _, _] => "CALL nnn",
-            [3, x, _, _] => "SE Vx, kk",
-            [4, x, _, _] => "SNE Vx, kk",
-            [5, x, y, 0] => "SE Vx, Vy",
-            [6, x, _, _] => "LD Vx, kk",
-            [7, x, _, _] => "ADD Vx, kk",
-            [8, x, y, 0] => "LD Vx, Vy",
-            [8, x, y, 1] => "OR Vx, Vy",
-            [8, x, y, 2] => "AND Vx, Vy",
-            [8, x, y, 3] => "XOR Vx, Vy",
-            [8, x, y, 4] => "ADD Vx, Vy",
-            [8, x, y, 5] => "SUB Vx, Vy",
-            [8, x, y, 6] => "SHR Vx {, Vy}",
-            [8, x, y, 7] => "SUBN Vx, Vy",
-            [8, x, y, 0xE] => "SHL Vx {, Vy}",
-            [9, x, y, 0] => "SNE Vx, Vy",
-            [0xA, _, _, _] => "LD I, nnn",
-            [0xB, _, _, _] => "JP V0, nnn",
-            [0xC, x, _, _] => "RND Vx, kk",
-            [0xD, x, y, n] => "DRW Vx, Vy, n",
-            [0xE, x, 9, 0xE] => "SKP Vx",
-            [0xE, x, 0xA, 1] => "SKNP Vx",
-            [0xF, x, 0, 7] => "LD Vx, DT",
-            [0xF, x, 0, 0xA] => "LD Vx, K",
-            [0xF, x, 1, 5] => "LD DT, Vx",
-            [0xF, x, 1, 8] => "LD ST, Vx",
-            [0xF, x, 1, 0xE] => "ADD I, Vx",
-            [0xF, x, 2, 9] => "LD F, Vx",
-            [0xF, x, 3, 3] => "LD B, Vx",
-            [0xF, x, 5, 5] => "LD [I], Vx",
-            [0xF, x, 6, 5] => "LD Vx, [I]",
+            [0, 0, 0xE, 0] => CLS,
+            [0, 0, 0xE, 0xE] => RET,
+            [1, _, _, _] => JP(JPMode::NoOffset(nnn)),
+            [2, _, _, _] => CALL(nnn),
+            [3, x, _, _] => SE(SEMode::Imm8(x, kk)),
+            [4, x, _, _] => SNE(SEMode::Imm8(x, kk)),
+            [5, x, y, 0] => SE(SEMode::Reg(x, y)),
+            [6, x, _, _] => LD(LDMode::Imm8(x, kk)),
+            [7, x, _, _] => ADD(ADDMode::Imm8(x, kk)),
+            [8, x, y, 0] => LD(LDMode::Reg(x, y)),
+            [8, x, y, 1] => OR(x, y),
+            [8, x, y, 2] => AND(x, y),
+            [8, x, y, 3] => XOR(x, y),
+            [8, x, y, 4] => ADD(ADDMode::Reg(x, y)),
+            [8, x, y, 5] => SUB(x, y),
+            [8, x, y, 6] => SHR(x),
+            [8, x, y, 7] => SUBN(x, y),
+            [8, x, y, 0xE] => SHL(x),
+            [9, x, y, 0] => SNE(SEMode::Reg(x, y)),
+            [0xA, _, _, _] => LD(LDMode::Imm12(nnn)),
+            [0xB, _, _, _] => JP(JPMode::Offset(nnn)),
+            [0xC, x, _, _] => RND(x, kk),
+            [0xD, x, y, n] => DRW(x, y, n),
+            [0xE, x, 9, 0xE] => SKP(x),
+            [0xE, x, 0xA, 1] => SKNP(x),
+            [0xF, x, 0, 7] => LD(LDMode::FromDT(x)),
+            [0xF, x, 0, 0xA] => LD(LDMode::K(x)),
+            [0xF, x, 1, 5] => LD(LDMode::DT(x)),
+            [0xF, x, 1, 8] => LD(LDMode::ST(x)),
+            [0xF, x, 1, 0xE] => ADD(ADDMode::ToI(x)),
+            [0xF, x, 2, 9] => LD(LDMode::F(x)),
+            [0xF, x, 3, 3] => LD(LDMode::B(x)),
+            [0xF, x, 5, 5] => LD(LDMode::ToI(x)),
+            [0xF, x, 6, 5] => LD(LDMode::FromI(x)),
             _ => panic!("INVALID INSTRUCTION: {:04x}", instr),
         }
     }
 
-    fn run_instr(&mut self, instr: u16) {
-        let nibbles: [usize; 4] = [
-            ((instr & 0xF000) >> 12).into(),
-            ((instr & 0x0F00) >> 8).into(),
-            ((instr & 0x00F0) >> 4).into(),
-            (instr & 0x000F).into(),
-        ];
-        let kk: u8 = instr as u8;
-        let nnn: u16 = instr & 0x0FFF;
-        match nibbles {
-            [0, 0, 0xE, 0] => self.screen = [[false; CHIP8_WIDTH]; CHIP8_HEIGHT],
-            [0, 0, 0xE, 0xE] => self.PC = self.pop(),
-            [1, _, _, _] => self.PC = nnn,
-            [2, _, _, _] => self.CALL(nnn),
-            [3, x, _, _] => self.SKIP(self.V[x] == kk),
-            [4, x, _, _] => self.SKIP(self.V[x] != kk),
-            [5, x, y, 0] => self.SKIP(self.V[x] == self.V[y]),
-            [6, x, _, _] => self.V[x] = kk,
-            [7, x, _, _] => self.ADD(x, kk, false),
-            [8, x, y, 0] => self.V[x] = self.V[y],
-            [8, x, y, 1] => self.V[x] |= self.V[y],
-            [8, x, y, 2] => self.V[x] &= self.V[y],
-            [8, x, y, 3] => self.V[x] ^= self.V[y],
-            [8, x, y, 4] => self.ADD(x, self.V[y], true),
-            [8, x, y, 5] => self.SUB(x, self.V[y]),
-            [8, x, y, 6] => self.SH(x, 'R'),
-            [8, x, y, 7] => self.SUB(y, self.V[x]),
-            [8, x, y, 0xE] => self.SH(x, 'L'),
-            [9, x, y, 0] => self.SKIP(self.V[x] != self.V[y]),
-            [0xA, _, _, _] => self.I = nnn,
-            [0xB, _, _, _] => self.PC = nnn + self.V[0] as u16,
-            [0xC, x, _, _] => self.V[x] = self.rng.gen::<u8>() & kk,
-            [0xD, x, y, n] => self.DRW(x, y, n),
-            [0xE, x, 9, 0xE] => self.SKIP(self.keyboard[self.V[x] as usize]),
-            [0xE, x, 0xA, 1] => self.SKIP(!self.keyboard[self.V[x] as usize]),
-            [0xF, x, 0, 7] => self.V[x] = self.DT,
-            [0xF, x, 0, 0xA] => self.LD(x, "K"),
-            [0xF, x, 1, 5] => self.DT = self.V[x],
-            [0xF, x, 1, 8] => self.ST = self.V[x],
-            [0xF, x, 1, 0xE] => self.I = self.I.wrapping_add(self.V[x] as u16),
-            [0xF, x, 2, 9] => self.LD(x, "F"),
-            [0xF, x, 3, 3] => self.LD(x, "B"),
-            [0xF, x, 5, 5] => self.LD(x, "->[I]"),
-            [0xF, x, 6, 5] => self.LD(x, "<-[I]"),
-            _ => (),
-        };
+    fn instr_name(&self, instr: &Instr) -> &str {
+        match instr {
+            LD(mode) => match mode {
+                LDMode::Imm8(x, kk) => "LD Vx, kk",
+                LDMode::Imm12(nnn) => "LD I, nnn",
+                LDMode::Reg(x, y) => "LD Vx, Vy",
+                LDMode::FromDT(x) => "LD Vx, DT",
+                LDMode::DT(x) => "LD DT, Vx",
+                LDMode::ST(x) => "LD ST, Vx",
+                LDMode::K(x) => "LD Vx, K",
+                LDMode::F(x) => "LD Vx, F",
+                LDMode::B(x) => "LD Vx, B",
+                LDMode::ToI(x) => "LD [I], Vx",
+                LDMode::FromI(x) => "LD Vx, [I]",
+            },
+            ADD(mode) => match mode {
+                ADDMode::Imm8(x, kk) => "ADD Vx, kk",
+                ADDMode::Reg(x, y) => "ADD Vx, Vy",
+                ADDMode::ToI(x) => "ADD I, Vx",
+            },
+            SUB(x, y) => "SUB Vx, Vy",
+            SUBN(x, y) => "SUB Vy, Vx",
+            OR(x, y) => "OR Vx, Vy",
+            AND(x, y) => "AND Vx, Vy",
+            XOR(x, y) => "XOR Vx, Vy",
+            SHR(x) => "SHR Vx {, Vy}",
+            SHL(x) => "SHL Vx {, Vy}",
+            RND(x, kk) => "RND Vx, kk",
+
+            SKP(x) => "SKP Vx",
+            SKNP(x) => "SKNP Vx",
+            SE(mode) => match mode {
+                SEMode::Imm8(x, kk) => "SE Vx, kk",
+                SEMode::Reg(x, y) => "SE Vx, Vy",
+            },
+            SNE(mode) => match mode {
+                SEMode::Imm8(x, kk) => "SNE Vx, kk",
+                SEMode::Reg(x, y) => "SNE Vx, Vy",
+            },
+            JP(mode) => match mode {
+                JPMode::NoOffset(nnn) => "JP nnn",
+                JPMode::Offset(nnn) => "JP V0, nnn",
+            },
+            CALL(nnn) => "CALL nnn",
+            RET => "RET",
+
+            CLS => "CLS",
+            DRW(x, y, n) => "DRW Vx, Vy, n",
+        }
     }
 
-    fn LD(&mut self, x: usize, mode: &str) {
+    fn run_instr(&mut self, instr: Instr) {
         let I = self.I as usize;
-        match mode {
-            "K" => loop {
-                if let Some((key_val, true)) = self.poll_keyboard() {
-                    self.V[x] = key_val as u8;
-                    break;
+        match instr {
+            LD(mode) => match mode {
+                LDMode::Imm8(x, kk) => self.V[x] = kk,
+                LDMode::Imm12(nnn) => self.I = nnn,
+                LDMode::Reg(x, y) => self.V[x] = self.V[y],
+                LDMode::FromDT(x) => self.V[x] = self.DT,
+                LDMode::DT(x) => self.DT = self.V[x],
+                LDMode::ST(x) => self.ST = self.V[x],
+                LDMode::K(x) => loop {
+                    if let Some((key_val, true)) = self.poll_keyboard() {
+                        self.V[x] = key_val as u8;
+                        break;
+                    }
+                },
+                LDMode::F(x) => self.I = DIGITS_LOC + 5 * self.V[x] as u16,
+                LDMode::B(x) => {
+                    let B = [self.V[x] / 100, (self.V[x] % 100) / 10, self.V[x] % 10];
+                    self.RAM[I..I + 3].copy_from_slice(&B);
+                }
+                LDMode::ToI(x) => self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]),
+                LDMode::FromI(x) => self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]),
+            },
+            ADD(mode) => match mode {
+                ADDMode::Imm8(x, kk) => self.V[x] = self.V[x].wrapping_add(kk),
+                ADDMode::ToI(x) => self.I = self.I.wrapping_add(self.V[x] as u16),
+                ADDMode::Reg(x, y) => {
+                    let (res, overflow) = self.V[x].overflowing_add(self.V[y]);
+                    self.V[x] = res;
+                    self.V[0xF] = overflow as u8;
                 }
             },
-            "F" => self.I = DIGITS_LOC + 5 * self.V[x] as u16,
-            "B" => {
-                let B = [self.V[x] / 100, (self.V[x] % 100) / 10, self.V[x] % 10];
-                self.RAM[I..I + 3].copy_from_slice(&B);
+            SUB(x, y) => self.sub(x, y),
+            SUBN(x, y) => self.sub(y, x),
+            OR(x, y) => self.V[x] |= self.V[y],
+            AND(x, y) => self.V[x] &= self.V[y],
+            XOR(x, y) => self.V[x] ^= self.V[y],
+            SHR(x) => {
+                self.V[0xF] = self.V[x] & 1;
+                self.V[x] >>= 1;
             }
-            "->[I]" => self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]),
-            "<-[I]" => self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]),
-            _ => panic!("Incorrect LD mode."),
+            SHL(x) => {
+                self.V[0xF] = ((self.V[x] & 0x80) > 0) as u8;
+                self.V[x] <<= 1
+            }
+            RND(x, kk) => self.V[x] = self.rng.gen::<u8>() & kk,
+
+            SKP(x) => self.skip(self.keyboard[self.V[x] as usize]),
+            SKNP(x) => self.skip(!self.keyboard[self.V[x] as usize]),
+            SE(mode) => match mode {
+                SEMode::Imm8(x, kk) => self.skip(self.V[x] == kk),
+                SEMode::Reg(x, y) => self.skip(self.V[x] == self.V[y]),
+            },
+            SNE(mode) => match mode {
+                SEMode::Imm8(x, kk) => self.skip(self.V[x] != kk),
+                SEMode::Reg(x, y) => self.skip(self.V[x] != self.V[y]),
+            },
+            JP(mode) => match mode {
+                JPMode::NoOffset(nnn) => self.PC = nnn,
+                JPMode::Offset(nnn) => self.PC = nnn + self.V[0] as u16,
+            },
+            CALL(nnn) => {
+                self.push(self.PC + 2);
+                self.PC = nnn;
+            }
+            RET => self.PC = self.pop(),
+
+            CLS => self.screen = [[false; CHIP8_WIDTH]; CHIP8_HEIGHT],
+            DRW(x, y, n) => self.draw(x, y, n),
         }
     }
 
-    // Add src_val to V[dest_reg], and set VF if an overflow occurs
-    fn ADD(&mut self, dest_reg: usize, src_val: u8, overflow_check: bool) {
-        let (res, overflow) = self.V[dest_reg].overflowing_add(src_val);
-        self.V[dest_reg] = res;
-        if overflow_check {
-            self.V[0xF] = overflow as u8;
-        }
-    }
-
-    // Subtract src_val from V[dest_reg], and set VF if NO BORROW occurs
-    fn SUB(&mut self, dest_reg: usize, src_val: u8) {
-        let (res, borrow) = self.V[dest_reg].overflowing_sub(src_val);
-        self.V[dest_reg] = res;
+    // Subtract V[y] from V[x], and set VF if NO BORROW occurs
+    fn sub(&mut self, x: usize, y: usize) {
+        let (res, borrow) = self.V[x].overflowing_sub(self.V[y]);
+        self.V[x] = res;
         self.V[0xF] = !borrow as u8;
     }
 
-    // Shift the register left or right, and set VF if any set bits get
-    // shifted out of range.
-    fn SH(&mut self, reg: usize, direction: char) {
-        let (res, mask) = match direction {
-            'R' => (self.V[reg] >> 1, 1),
-            'L' => (self.V[reg] << 1, 1 << 7),
-            _ => panic!("Incorrect SH direction."),
-        };
-        self.V[0xF] = (self.V[reg] & mask != 0) as u8;
-        self.V[reg] = res;
-    }
-
-    fn CALL(&mut self, nnn: u16) {
-        self.push(self.PC + 2);
-        self.PC = nnn;
-    }
-
-    fn SKIP(&mut self, expr: bool) {
+    fn skip(&mut self, expr: bool) {
         if expr {
             self.PC += 2;
         }
@@ -329,7 +363,7 @@ impl Chip8 {
     // the screen with the sprite. Set VF if any set pixels on the screen
     // are erased during this process. Any pixels that would be drawn out
     // of bounds are wrapped around to the other side of the screen.
-    fn DRW(&mut self, x: usize, y: usize, n: usize) {
+    fn draw(&mut self, x: usize, y: usize, n: usize) {
         self.V[0xF] = 0;
         for j in 0..n {
             let y = (self.V[y] as usize + j) % CHIP8_HEIGHT;

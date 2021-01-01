@@ -1,4 +1,5 @@
 mod chip8;
+mod defs;
 mod display;
 
 use chip8::Chip8;
