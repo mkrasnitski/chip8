@@ -193,12 +193,12 @@ impl Chip8 {
             [0, 0, 0xE, 0xE] => RET,
             [1, _, _, _] => JP(nnn, JPMode::NoOffset),
             [2, _, _, _] => CALL(nnn),
-            [3, x, _, _] => SE(SEMode::Imm8(x, kk)),
-            [4, x, _, _] => SNE(SEMode::Imm8(x, kk)),
-            [5, x, y, 0] => SE(SEMode::Reg(x, y)),
-            [6, x, _, _] => LD(LDMode::Imm8(x, kk)),
+            [3, x, _, _] => SE(x, SEMode::Imm8(kk)),
+            [4, x, _, _] => SNE(x, SEMode::Imm8(kk)),
+            [5, x, y, 0] => SE(x, SEMode::Reg(y)),
+            [6, x, _, _] => LD(x, LDMode::Imm8(kk)),
             [7, x, _, _] => ADD(x, ADDMode::Imm8(kk)),
-            [8, x, y, 0] => LD(LDMode::Reg(x, y)),
+            [8, x, y, 0] => LD(x, LDMode::Reg(y)),
             [8, x, y, 1] => OR(x, y),
             [8, x, y, 2] => AND(x, y),
             [8, x, y, 3] => XOR(x, y),
@@ -207,22 +207,22 @@ impl Chip8 {
             [8, x, _, 6] => SHR(x),
             [8, x, y, 7] => SUBN(x, y),
             [8, x, _, 0xE] => SHL(x),
-            [9, x, y, 0] => SNE(SEMode::Reg(x, y)),
-            [0xA, _, _, _] => LD(LDMode::Imm12(nnn)),
+            [9, x, y, 0] => SNE(x, SEMode::Reg(y)),
+            [0xA, _, _, _] => LD(0, LDMode::Imm12(nnn)),
             [0xB, _, _, _] => JP(nnn, JPMode::Offset),
             [0xC, x, _, _] => RND(x, kk),
             [0xD, x, y, n] => DRW(x, y, n),
             [0xE, x, 9, 0xE] => SKP(x),
             [0xE, x, 0xA, 1] => SKNP(x),
-            [0xF, x, 0, 7] => LD(LDMode::FromDT(x)),
-            [0xF, x, 0, 0xA] => LD(LDMode::K(x)),
-            [0xF, x, 1, 5] => LD(LDMode::DT(x)),
-            [0xF, x, 1, 8] => LD(LDMode::ST(x)),
+            [0xF, x, 0, 7] => LD(x, LDMode::FromDT),
+            [0xF, x, 0, 0xA] => LD(x, LDMode::K),
+            [0xF, x, 1, 5] => LD(x, LDMode::DT),
+            [0xF, x, 1, 8] => LD(x, LDMode::ST),
             [0xF, x, 1, 0xE] => ADD(x, ADDMode::ToI),
-            [0xF, x, 2, 9] => LD(LDMode::F(x)),
-            [0xF, x, 3, 3] => LD(LDMode::B(x)),
-            [0xF, x, 5, 5] => LD(LDMode::ToI(x)),
-            [0xF, x, 6, 5] => LD(LDMode::FromI(x)),
+            [0xF, x, 2, 9] => LD(x, LDMode::F),
+            [0xF, x, 3, 3] => LD(x, LDMode::B),
+            [0xF, x, 5, 5] => LD(x, LDMode::ToI),
+            [0xF, x, 6, 5] => LD(x, LDMode::FromI),
             _ => return Err(format!("INVALID INSTRUCTION: {:04x}", instr)),
         };
         Ok(parsed_instr)
@@ -232,26 +232,26 @@ impl Chip8 {
         let I = self.I as usize;
         match instr {
             // Arithmetic
-            LD(mode) => match mode {
-                LDMode::Imm8(x, kk) => self.V[x] = kk,
+            LD(x, mode) => match mode {
+                LDMode::Imm8(kk) => self.V[x] = kk,
                 LDMode::Imm12(nnn) => self.I = nnn,
-                LDMode::Reg(x, y) => self.V[x] = self.V[y],
-                LDMode::FromDT(x) => self.V[x] = self.DT,
-                LDMode::DT(x) => self.DT = self.V[x],
-                LDMode::ST(x) => self.ST = self.V[x],
-                LDMode::K(x) => loop {
+                LDMode::Reg(y) => self.V[x] = self.V[y],
+                LDMode::FromDT => self.V[x] = self.DT,
+                LDMode::DT => self.DT = self.V[x],
+                LDMode::ST => self.ST = self.V[x],
+                LDMode::K => loop {
                     if let Some((key_val, true)) = self.poll_keyboard() {
                         self.V[x] = key_val as u8;
                         break;
                     }
                 },
-                LDMode::F(x) => self.I = DIGITS_LOC + 5 * self.V[x] as u16,
-                LDMode::B(x) => {
+                LDMode::F => self.I = DIGITS_LOC + 5 * self.V[x] as u16,
+                LDMode::B => {
                     let B = [self.V[x] / 100, (self.V[x] % 100) / 10, self.V[x] % 10];
                     self.RAM[I..I + 3].copy_from_slice(&B);
                 }
-                LDMode::ToI(x) => self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]),
-                LDMode::FromI(x) => self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]),
+                LDMode::ToI => self.RAM[I..I + x + 1].copy_from_slice(&self.V[..x + 1]),
+                LDMode::FromI => self.V[..x + 1].copy_from_slice(&self.RAM[I..I + x + 1]),
             },
             ADD(x, mode) => match mode {
                 ADDMode::Imm8(kk) => self.V[x] = self.V[x].wrapping_add(kk),
@@ -287,10 +287,10 @@ impl Chip8 {
             }
             SKP(x) => self.skip(self.keyboard[self.V[x] as usize]),
             SKNP(x) => self.skip(!self.keyboard[self.V[x] as usize]),
-            SE(SEMode::Imm8(x, kk)) => self.skip(self.V[x] == kk),
-            SE(SEMode::Reg(x, y)) => self.skip(self.V[x] == self.V[y]),
-            SNE(SEMode::Imm8(x, kk)) => self.skip(self.V[x] != kk),
-            SNE(SEMode::Reg(x, y)) => self.skip(self.V[x] != self.V[y]),
+            SE(x, SEMode::Imm8(kk)) => self.skip(self.V[x] == kk),
+            SE(x, SEMode::Reg(y)) => self.skip(self.V[x] == self.V[y]),
+            SNE(x, SEMode::Imm8(kk)) => self.skip(self.V[x] != kk),
+            SNE(x, SEMode::Reg(y)) => self.skip(self.V[x] != self.V[y]),
 
             // Drawing
             DRW(x, y, n) => self.draw(x, y, n),
