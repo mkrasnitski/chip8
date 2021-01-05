@@ -25,14 +25,12 @@ class Chip8:
                 0xE0, 0x90, 0x90, 0x90, 0xE0,
                 0xF0, 0x80, 0xF0, 0x80, 0xF0,
                 0xF0, 0x80, 0xF0, 0x80, 0x80])
-    keys=['1','2','3','4',
-          'q','w','e','r',
-          'a','s','d','f',
-          'z','x','c','v']
-    key_values = [ 1, 2,  3, 12,
-                   4, 5,  6, 13,
-                   7, 8,  9, 14,
-                  10, 0, 11, 15]
+    keys = {
+        '1': 1, '2': 2, '3': 3, '4': 12,
+        'q': 4, 'w': 5, 'e': 6, 'r': 13,
+        'a': 7, 's': 8, 'd': 9, 'f': 14,
+        'z': 10, 'x': 0, 'c': 11, 'v': 15
+    }
     digits_loc = 0x0
     start = 0x200
     screen_size = np.array([64, 32])
@@ -115,7 +113,7 @@ class Chip8:
         if n < 0x80:
             k = chr(n)
             if k in self.keys:
-                return self.key_values[self.keys.index(k)]
+                return self.keys[k]
 
     def push(self, v):
         self.SP += 1
@@ -295,7 +293,7 @@ class Chip8:
 
         x_idx = np.mod(range(self.V[x], self.V[x] + 8), self.screen.shape[0])
         y_idx = np.mod(range(self.V[y], self.V[y] + n), self.screen.shape[1])
-        slice_idx = [x_idx[:,np.newaxis], y_idx]
+        slice_idx = (x_idx[:,np.newaxis], y_idx)
 
         self.V[0xF] = np.any(self.screen[slice_idx] & bitarray)
         self.screen[slice_idx] ^= bitarray
