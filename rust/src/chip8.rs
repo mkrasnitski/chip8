@@ -1,5 +1,6 @@
 #![allow(non_snake_case)]
 
+use anyhow::{bail, Context, Result};
 use rand::Rng;
 use std::fs;
 use std::path::Path;
@@ -53,13 +54,10 @@ pub struct Chip8 {
 }
 
 impl Chip8 {
-    pub fn new(loc: &str) -> Result<Self, String> {
+    pub fn new(loc: &str) -> Result<Self> {
         let path = Path::new(loc);
-        let binary = match fs::read(&path) {
-            Ok(bytes) => bytes,
-            Err(_) => return Err(format!("Unable to read file {}", path.to_str().unwrap())),
-        };
-
+        let binary = fs::read(&path)
+            .with_context(|| format!("Couldn't read file `{}`", path.to_str().unwrap()))?;
         let mut c = Chip8 {
             start: 0x200,
             rng: rand::thread_rng(),
@@ -84,7 +82,7 @@ impl Chip8 {
         Ok(c)
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         self.PC = self.start;
         let mut timer = Instant::now();
         let frametime = match LIMIT_FREQ {
@@ -100,13 +98,7 @@ impl Chip8 {
             // if the instr modifies the PC directly, don't auto-increment it.
             // Then, run the instruction and invoke a draw call.
             let opcode = self.fetch_instr(self.PC);
-            let instr = match self.parse_instr(opcode) {
-                Ok(instr) => instr,
-                Err(e) => {
-                    println!("{}", e);
-                    break;
-                }
-            };
+            let instr = self.parse_instr(opcode)?;
             if DEBUG {
                 println!(
                     "{:04x} {:04x} {: <13} | {}",
@@ -202,7 +194,7 @@ impl Chip8 {
         ((self.RAM[addr] as u16) << 8) + (self.RAM[addr + 1] as u16)
     }
 
-    fn parse_instr(&self, instr: u16) -> Result<Instr, String> {
+    fn parse_instr(&self, instr: u16) -> Result<Instr> {
         let nibbles: [usize; 4] = [
             (instr >> 12).into(),
             ((instr >> 8) & 0xF).into(),
@@ -246,7 +238,7 @@ impl Chip8 {
             [0xF, x, 3, 3] => LD(x, LDMode::B),
             [0xF, x, 5, 5] => LD(x, LDMode::ToI),
             [0xF, x, 6, 5] => LD(x, LDMode::FromI),
-            _ => return Err(format!("INVALID INSTRUCTION: {:04x}", instr)),
+            _ => bail!("INVALID INSTRUCTION: {:04x}", instr),
         };
         Ok(parsed_instr)
     }
